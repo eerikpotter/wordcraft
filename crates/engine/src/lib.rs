@@ -10,6 +10,7 @@ pub mod catalog;
 pub mod cmd;
 pub mod io;
 mod io_ext;
+pub mod native;
 pub mod sample;
 mod session;
 

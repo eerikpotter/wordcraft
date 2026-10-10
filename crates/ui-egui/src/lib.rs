@@ -28,6 +28,8 @@ pub use control::ControlRequest;
 /// Platform services injected by the host (file dialogs, file I/O).
 #[derive(Default)]
 pub struct Services {
+    /// Optional host-provided File menu section (for example, cloud storage).
+    pub file_menu: Option<Box<dyn FnMut(&mut egui::Ui, bool)>>,
     /// Pick a file to open; the argument says what for (`document`, `picture`).
     pub pick_open: Option<Box<dyn Fn(&str) -> Option<String>>>,
     /// Pick a path to save to, given a suggested name.

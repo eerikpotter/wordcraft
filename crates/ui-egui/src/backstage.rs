@@ -6,13 +6,14 @@ use serde_json::json;
 use crate::theme::{APP_COLOR, Tokens, medium, regular, semibold};
 use crate::{WordApp, icons};
 
-const PAGES: [(&str, &str); 9] = [
+const PAGES: [(&str, &str); 10] = [
     ("home", "Home"),
     ("new", "New"),
     ("open", "Open"),
     ("info", "Info"),
     ("save", "Save"),
     ("saveAs", "Save As"),
+    ("cloud", "Sovereign Cloud"),
     ("print", "Print"),
     ("export", "Export"),
     ("options", "Options"),
@@ -38,6 +39,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             }
             ui.add_space(6.0);
             for (id, label) in PAGES {
+                if id == "cloud" && app.services.file_menu.is_none() {
+                    continue;
+                }
                 let (r, resp) = ui.allocate_exact_size(vec2(200.0, 38.0), Sense::click());
                 let active = app.ui.backstage_page == id;
                 if active {
@@ -84,6 +88,11 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         });
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.ribbon).inner_margin(egui::Margin::symmetric(40, 30))).show(ui, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| match app.ui.backstage_page.as_str() {
+            "cloud" => {
+                if let Some(section) = &mut app.services.file_menu {
+                    section(ui, true);
+                }
+            }
             "new" | "home" => new_page(app, ui),
             "open" => open_page(app, ui),
             "info" => info_page(app, ui),

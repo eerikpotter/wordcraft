@@ -102,7 +102,10 @@ struct Undo {
 }
 
 /// An editing session.
+static NEXT_DOCUMENT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 pub struct Session {
+    document_id: u64,
     pub doc: Document,
     pub sel: Selection,
     pub view: ViewState,
@@ -161,6 +164,7 @@ impl Session {
     pub fn new(doc: Document) -> Self {
         let start = doc.start_of(StoryRef::Body);
         Session {
+            document_id: NEXT_DOCUMENT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             doc,
             sel: Selection::caret(start),
             view: ViewState::default(),
@@ -289,7 +293,12 @@ impl Session {
     }
 
     /// Replace the document (open/new).
+    pub fn document_id(&self) -> u64 {
+        self.document_id
+    }
+
     pub fn set_document(&mut self, doc: Document) {
+        self.document_id = NEXT_DOCUMENT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.doc = doc;
         self.doc.ensure_nonempty();
         self.sel = Selection::caret(self.doc.start_of(StoryRef::Body));
@@ -400,5 +409,18 @@ impl Session {
     pub fn selected_text(&self) -> String {
         let (a, b) = self.sel.ordered();
         self.doc.copy_range(&a, &b).plain_text()
+    }
+}
+
+#[cfg(test)]
+mod document_identity_tests {
+    #[test]
+    fn edits_keep_identity_but_replacing_document_changes_it() {
+        let mut session = super::Session::new(wordcraft_doc::Document::new());
+        let first = session.document_id();
+        session.touch();
+        assert_eq!(session.document_id(), first);
+        session.set_document(wordcraft_doc::Document::new());
+        assert_ne!(session.document_id(), first);
     }
 }

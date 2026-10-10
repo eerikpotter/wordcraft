@@ -58,3 +58,9 @@ Generated-in-code art is original and has no file to list: the UI icon set (`cra
 | `docs/brand/artcraft-mark.png` | ArtCraft Team | craftrules `assets/brand/` | ArtCraft trademark, `docs/brand/LICENSE-brand.txt` | Not open source; usable unmodified only |
 | `docs/brand/artcraft-mark.svg` | ArtCraft Team | craftrules `assets/brand/` | ArtCraft trademark, `docs/brand/LICENSE-brand.txt` | Not open source; usable unmodified only |
 | craft-fonts (optional build input, not files in this repo): BIZ UDPGothic, BIZ UDMincho, Shippori Mincho | see https://github.com/storytold/craft-fonts/blob/main/ATTRIBUTION.md | embedded only when built with `CRAFT_FONTS_DIR` (all official releases) | OFL-1.1 | Japanese UI and document fallback |
+
+### Shared Sovereign Cloud
+
+| Asset | Author | Source | License |
+|---|---|---|---|
+| `vendor/sovereign-cloud-ui/assets/icp/logo.svg` | DFINITY Foundation | [DFINITY documentation favicon](https://github.com/dfinity/developer-docs/blob/2e48927666fb50d15a5c874aca4b64f50e584708/public/favicon.svg), viewBox cropped to the infinity mark | Apache-2.0; license and provenance included beside the asset |

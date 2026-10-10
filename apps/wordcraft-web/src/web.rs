@@ -38,7 +38,19 @@ pub fn start() {
                     let doc = if query().contains("sample") { wordcraft_engine::sample::sample_document() } else { wordcraft_doc::Document::new() };
                     let mut app = WordApp::new(Session::new(doc), services(inbox.clone(), cc.egui_ctx.clone()));
                     app.autosave = false;
-                    Ok(Box::new(WebShell { app, inbox }))
+                    #[cfg(feature = "icp-cloud")]
+                    let cloud = {
+                        let cloud = sovereign_cloud_ui::Cloud::new(sovereign_cloud_ui::AppSpec::WORD, cc.egui_ctx.clone());
+                        let menu = cloud.menu_handle();
+                        app.services.file_menu = Some(Box::new(move |ui, has_doc| menu.ui(ui, has_doc)));
+                        cloud
+                    };
+                    Ok(Box::new(WebShell {
+                        app,
+                        inbox,
+                        #[cfg(feature = "icp-cloud")]
+                        cloud,
+                    }))
                 }),
             )
             .await;
@@ -58,6 +70,8 @@ fn query() -> String {
 /// Wraps the app to read dropped files asynchronously (browsers can't read them synchronously)
 /// and feed them through the inbox.
 struct WebShell {
+    #[cfg(feature = "icp-cloud")]
+    cloud: sovereign_cloud_ui::Cloud,
     app: WordApp,
     inbox: Inbox,
 }
@@ -80,6 +94,7 @@ impl eframe::App for WebShell {
             });
         }
         self.app.logic(ctx);
+        publish_dirty_state(self.app.session.dirty);
     }
 
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -88,6 +103,9 @@ impl eframe::App for WebShell {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.app.ui(ui);
+        #[cfg(feature = "icp-cloud")]
+        self.cloud.ui(ui.ctx(), &mut crate::cloud::Adapter(&mut self.app));
+        publish_dirty_state(self.app.session.dirty);
     }
 }
 
@@ -162,5 +180,15 @@ fn mime_for(name: &str) -> &'static str {
         Some("md" | "txt") => "text/plain",
         Some("json") => "application/json",
         _ => "application/octet-stream",
+    }
+}
+
+/// Browser-host contract: report unsaved work without exposing document contents.
+fn publish_dirty_state(dirty: bool) {
+    if let Some(root) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.document_element()) {
+        let value = if dirty { "true" } else { "false" };
+        if root.get_attribute("data-craft-dirty").as_deref() != Some(value) {
+            let _ = root.set_attribute("data-craft-dirty", value);
+        }
     }
 }

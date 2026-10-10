@@ -21,3 +21,6 @@ fn main() {
 fn main() {
     eprintln!("wordcraft-web only runs in the browser: build it with `trunk build --release` in apps/wordcraft-web");
 }
+
+#[cfg(all(target_arch = "wasm32", feature = "icp-cloud"))]
+mod cloud;
