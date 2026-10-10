@@ -17,7 +17,7 @@ pub fn open_bytes(name: &str, bytes: &[u8]) -> Result<Document, String> {
     let ext = ext_of(name);
     let mut doc = match ext.as_str() {
         "txt" | "text" | "" => Document::from_text(&decode_text(bytes)),
-        "json" => crate::native::decode(bytes).map_err(|e| format!("{name}: {e}"))?,
+        "json" => serde_json::from_slice::<Document>(bytes).map_err(|e| format!("{name}: {e}"))?,
         other => match crate::io_ext::open(other, bytes) {
             Some(r) => r?,
             None => return Err(format!("{name}: unsupported format `.{other}`")),
@@ -32,7 +32,7 @@ pub fn save_bytes(name: &str, doc: &Document) -> Result<Vec<u8>, String> {
     let ext = ext_of(name);
     match ext.as_str() {
         "txt" | "text" => Ok(doc.plain_text(wordcraft_doc::StoryRef::Body).replace('\n', "\r\n").into_bytes()),
-        "json" => crate::native::encode(doc),
+        "json" => serde_json::to_vec_pretty(doc).map_err(|e| e.to_string()),
         other => match crate::io_ext::save(other, doc) {
             Some(r) => r,
             None => Err(format!("{name}: can't save as `.{other}`")),

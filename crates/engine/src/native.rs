@@ -1,4 +1,4 @@
-//! Native JSON document persistence, including media omitted by the model's serde snapshot.
+//! Cloud JSON document persistence, including media omitted by the model's serde snapshot.
 //! Older metadata-only JSON remains readable. No external files are opened while decoding.
 use crate::cmd::insert::{base64_decode, base64_encode};
 use std::{collections::BTreeMap, sync::Arc};
@@ -87,8 +87,8 @@ mod tests {
         assert!(!document.media.is_empty());
         document.core.title = "Cloud test".into();
         document.passthrough.insert("customXml/item1.xml".into(), Arc::new(b"<custom>Original</custom>".to_vec()));
-        let bytes = crate::io::save_bytes("test.wcraft.json", &document).unwrap();
-        let restored = crate::io::open_bytes("test.wcraft.json", &bytes).unwrap();
+        let bytes = encode_bounded(&document, 64 * 1024 * 1024).unwrap();
+        let restored = decode_bounded(&bytes, 64 * 1024 * 1024).unwrap();
         assert_eq!(restored, document);
     }
     #[test]
