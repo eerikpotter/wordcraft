@@ -8,19 +8,30 @@
 
 pub mod catalog;
 pub mod cmd;
+pub mod file_access;
 pub mod io;
 mod io_ext;
+pub mod keymap;
+pub mod math_gallery;
 pub mod native;
+pub mod print;
+pub mod ribbon;
 pub mod sample;
 mod session;
+pub mod speech;
 
 use std::collections::HashMap;
 
 use serde_json::Value;
 
-pub use session::{FindState, Selection, Session, ViewState};
+pub use io::Password;
+pub use keymap::KeyMap;
+pub use ribbon::RibbonLayout;
+pub use session::{ColumnBlock, EditSnapshot, FindState, MathEdit, Prefs, Selection, Session, ViewState, blank_document, set_system_locale};
 pub use wordcraft_doc as doc;
+pub use wordcraft_geom::Region;
 pub use wordcraft_layout as layout;
+pub use wordcraft_proof as proof;
 pub use wordcraft_render as render;
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
@@ -154,3 +165,11 @@ pub mod p {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_bidi;
+#[cfg(test)]
+mod tests_fonts;
+#[cfg(test)]
+mod tests_typing;
+#[cfg(test)]
+mod tests_wordart;
