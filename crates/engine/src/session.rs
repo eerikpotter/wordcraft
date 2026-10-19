@@ -383,6 +383,8 @@ pub struct Session {
     pub page_hint: usize,
     pub registry: Arc<Registry>,
     /// Author name for comments and tracked changes.
+    /// Active host account, independent of the editable display name. Never persisted.
+    pub user_id: Option<String>,
     pub author: String,
     /// Initials for comments (File › Options › General); empty = the name's initials.
     pub initials: String,
@@ -646,6 +648,7 @@ impl Session {
             goal_x: None,
             page_hint: 0,
             registry: Arc::new(crate::cmd::registry()),
+            user_id: None,
             author: "WordCraft User".into(),
             initials: String::new(),
             painter: None,
@@ -1164,6 +1167,7 @@ impl Session {
             goal_x: _,
             page_hint: _,
             registry: _,
+            user_id: _,
             author: _,
             initials: _,
             painter: _,

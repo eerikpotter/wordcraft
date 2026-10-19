@@ -66,3 +66,11 @@ winit or rfd.
 |---|---|---|
 | 2026-10-10 | minor | `proof`: proofing languages (English, Polish), affix engine, Polish patterns; layout and engine route each run by its language |
 | 2026-10-10 | major | First committed architecture doc, from the crates' sources and `AGENTS.md` |
+
+### Subnet host identity (19 October 2026)
+
+The browser cloud adapter supplies the authenticated account's opaque `user_id`
+and Subnet account display name through `Editor::set_user_profile`. The ID is runtime context only: it is
+cleared on logout/session changes and excluded from persisted preferences. Engine
+code has no ICP dependency, and opening someone else's file does not change the
+active user. The account name overrides local author-name preferences while signed in. This hook does not yet persist author IDs in comments or change author matching.

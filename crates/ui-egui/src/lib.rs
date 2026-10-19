@@ -96,6 +96,10 @@ pub use file_dialogs::{FileDialogAnswer, FileDialogRequest, open_filters};
 /// Platform services injected by the host (file dialogs, file I/O).
 #[derive(Default)]
 pub struct Services {
+    /// Optional workspace title/status presentation; does not change file state.
+    /// Optional workspace rename intent; native behavior remains the fallback.
+    pub rename_document: Option<Box<dyn Fn()>>,
+    pub document_title: Option<Box<dyn Fn() -> Option<String>>>,
     /// Optional host-provided File menu section (for example, cloud storage).
     pub file_menu: Option<Box<dyn FnMut(&mut egui::Ui, bool)>>,
     /// Desktop: discover configured printers on a worker.
@@ -846,6 +850,12 @@ impl WordApp {
     /// Close, Envelopes, Labels and Finish & Merge on a document with unsaved changes first ask
     /// Save / Don't Save / Cancel, and the command runs once that is answered (`ui.saveChanges`).
     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
+        if id == "file.rename" && params.get("name").is_none()
+            && let Some(rename) = &self.services.rename_document
+        {
+            rename();
+            return Ok(json!({"pending":"workspaceRename"}));
+        }
         // Comment text still being typed is written first, so a save or export has it and a
         // close, New or Open counts it as a change (#1348). A draft the document refuses is not
         // part of it: saving and exporting go on without it (the refusal stays on the status

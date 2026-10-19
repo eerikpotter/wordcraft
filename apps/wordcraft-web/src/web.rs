@@ -82,6 +82,8 @@ pub fn start() {
                     #[cfg(feature = "icp-cloud")]
                     let cloud = {
                         let cloud = sovereign_cloud_ui::Cloud::new(sovereign_cloud_ui::AppSpec::WORD, cc.egui_ctx.clone());
+                        let rename = cloud.menu_handle();
+                        app.services.rename_document = Some(Box::new(move || rename.request(sovereign_cloud_ui::Request::Rename)));
                         let menu = cloud.menu_handle();
                         app.services.file_menu = Some(Box::new(move |ui, has_doc| menu.ui(ui, has_doc)));
                         cloud
@@ -132,6 +134,8 @@ fn stored_prefs() -> Option<String> {
 
 impl eframe::App for WebShell {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        #[cfg(feature = "icp-cloud")]
+        self.cloud.sync_identity(&mut crate::cloud::Adapter(&mut self.app));
         let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
         for f in dropped {
             let inbox = self.inbox.clone();
@@ -171,6 +175,8 @@ impl eframe::App for WebShell {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        #[cfg(feature = "icp-cloud")]
+        self.cloud.sync_identity(&mut crate::cloud::Adapter(&mut self.app));
         self.app.ui(ui);
         #[cfg(feature = "icp-cloud")]
         self.cloud.ui(ui.ctx(), &mut crate::cloud::Adapter(&mut self.app));
@@ -232,6 +238,16 @@ fn services(inbox: Inbox, ctx: egui::Context, dirty: Rc<Cell<bool>>, saves: Asyn
     let font_ctx = ctx.clone();
     let font_messages = messages.clone();
     Services {
+        #[cfg(feature = "icp-cloud")]
+        document_title: Some(Box::new(|| {
+            // Consume the same presentation contract as the outer workspace shell.
+            let root = web_sys::window()?.document()?.document_element()?;
+            let state: serde_json::Value = serde_json::from_str(&root.get_attribute("data-subnet-document")?).ok()?;
+            if state.get("version")?.as_u64()? != 1 {
+                return None;
+            }
+            Some(format!("{} — {}", state.get("name")?.as_str()?, state.get("status")?.as_str()?))
+        })),
         open_async: Some(Box::new(move |purpose: &str| {
             let inbox = open_inbox.clone();
             let ctx = ctx.clone();

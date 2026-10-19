@@ -3,6 +3,30 @@ use sovereign_cloud_ui::{DocumentState, Editor, Snapshot};
 
 pub struct Adapter<'a>(pub &'a mut wordcraft_ui_egui::WordApp);
 impl Editor for Adapter<'_> {
+    fn create_document(&mut self) -> Result<(), String> {
+        if self.document().is_some() {
+            return Ok(());
+        }
+        self.0.run("file.new", serde_json::json!({}))?;
+        self.0.ui.backstage = false;
+        self.0.canvas.want_focus = true;
+        Ok(())
+    }
+    fn set_user_profile(&mut self, profile: Option<sovereign_cloud_ui::UserProfile<'_>>) {
+        let previous = self.0.session.user_id.is_some();
+        self.0.session.user_id = profile.map(|p| p.id.to_owned());
+        if profile.is_some() || previous {
+            self.0.session.initials.clear();
+        }
+        if let Some(profile) = profile {
+            if self.0.session.author != profile.display_name {
+                self.0.session.author = profile.display_name.to_owned();
+            }
+        } else if previous {
+            self.0.session.author = "WordCraft User".into();
+        }
+    }
+
     fn document(&self) -> Option<DocumentState> {
         if !self.0.has_document() {
             return None;
@@ -71,5 +95,66 @@ mod tests {
         let current = adapter.document().unwrap().id;
         assert!(adapter.open("Broken", b"not a document").is_err());
         assert_eq!(adapter.document().unwrap().id, current);
+    }
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+
+    #[test]
+    fn existing_comments_and_replies_use_subnet_names_and_roundtrip() {
+        use serde_json::json;
+        use sovereign_cloud_ui::UserProfile;
+        let mut app = wordcraft_ui_egui::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        app.session.set_document(wordcraft_doc::Document::from_text("Shared document"));
+        Adapter(&mut app).set_user_profile(Some(UserProfile { id: "account-a", display_name: "Alice Subnet" }));
+        let root = app.session.run("review.newComment", &json!({"text":"Please review"})).unwrap()["id"].as_u64().unwrap() as u32;
+        Adapter(&mut app).set_user_profile(Some(UserProfile { id: "account-b", display_name: "Bob Subnet" }));
+        let reply = app.session.run("review.reply", &json!({"id":root,"text":"Reviewed"})).unwrap()["id"].as_u64().unwrap() as u32;
+        let snapshot = Adapter(&mut app).capture().unwrap();
+        let bytes = (snapshot.encode)().unwrap();
+        Adapter(&mut app).open("Shared.wcraft.json", &bytes).unwrap();
+        assert_eq!(app.session.doc.comments[&root].author, "Alice Subnet");
+        assert_eq!(app.session.doc.comments[&reply].author, "Bob Subnet");
+        assert_eq!(app.session.doc.comments[&reply].initials, "BS");
+        assert_eq!(app.session.user_id.as_deref(), Some("account-b"));
+    }
+
+    #[test]
+    fn account_profile_follows_host_and_cannot_restore_identity() {
+        let mut app = wordcraft_ui_egui::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        app.session.author = "Same display name".into();
+        for id in [None, Some("account-a"), Some("account-a"), Some("account-b"), None] {
+            Adapter(&mut app).set_user_profile(id.map(|id| sovereign_cloud_ui::UserProfile { id, display_name: "Subnet name" }));
+            assert_eq!(app.session.user_id.as_deref(), id);
+            if id.is_some() {
+                assert_eq!(app.session.author, "Subnet name");
+            }
+        }
+        Adapter(&mut app).set_user_profile(Some(sovereign_cloud_ui::UserProfile { id: "account-a", display_name: "Subnet name" }));
+        let stored = serde_json::to_string(&app.prefs()).unwrap();
+        assert!(!stored.contains("account-a"));
+        let mut fresh = wordcraft_ui_egui::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        crate::prefs::restore(&mut fresh, Some(&stored));
+        assert!(fresh.session.user_id.is_none());
+        assert_eq!(fresh.session.author, "Subnet name");
+        app.session.set_document(wordcraft_doc::Document::new());
+        assert_eq!(app.session.user_id.as_deref(), Some("account-a"));
+    }
+}
+
+#[cfg(test)]
+mod creation_tests {
+    use super::*;
+    #[test]
+    fn workspace_creation_opens_one_native_document_and_preserves_it_on_repeat() {
+        let mut app = wordcraft_ui_egui::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        let mut adapter = Adapter(&mut app);
+        adapter.create_document().unwrap();
+        let first = adapter.document().unwrap();
+        adapter.create_document().unwrap();
+        assert_eq!(adapter.document().unwrap().id, first.id);
+        assert!(!(adapter.capture().unwrap().encode)().unwrap().is_empty());
     }
 }

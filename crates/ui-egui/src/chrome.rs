@@ -378,22 +378,7 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
                 });
             });
             // Centred title.
-            let title = if !app.has_document() {
-                // No document open (#1129): the app's name alone.
-                "WordCraft".to_string()
-            } else {
-                format!(
-                    "{} — {}",
-                    app.title_stem(),
-                    if app.session.dirty {
-                        tl!("Edited")
-                    } else if app.session.path.is_some() {
-                        tl!("Saved")
-                    } else {
-                        tl!("Not saved")
-                    }
-                )
-            };
+            let title = document_title(app);
             let font = TypeRung::Chrome.semibold();
             let track = TypeRung::Chrome.tracking();
             let cx = full.center().x;
@@ -628,8 +613,60 @@ impl WordApp {
     }
 }
 
+// The workspace owns its save status. Local file state remains untouched.
+fn document_title(app: &crate::WordApp) -> String {
+    if let Some(title) = app.services.document_title.as_ref().and_then(|title| title()) {
+        return title;
+    }
+    if !app.has_document() {
+        // No document open (#1129): the app's name alone.
+        "WordCraft".to_string()
+    } else {
+        format!(
+            "{} — {}",
+            app.title_stem(),
+            if app.session.dirty {
+                tl!("Edited")
+            } else if app.session.path.is_some() {
+                tl!("Saved")
+            } else {
+                tl!("Not saved")
+            }
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn workspace_title_does_not_fabricate_a_local_save() {
+        let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
+        assert!(super::document_title(&app).contains("Not saved"));
+        app.services.document_title = Some(Box::new(|| Some("Project — Salvestatud".into())));
+        assert_eq!(super::document_title(&app), "Project — Salvestatud");
+        assert!(app.session.path.is_none());
+        app.services.document_title = None;
+        assert!(super::document_title(&app).contains("Not saved"));
+    }
+
+    #[test]
+    fn workspace_rename_uses_host_without_changing_local_document() {
+        let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
+        let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+        let called = calls.clone();
+        app.services.rename_document = Some(Box::new(move || called.set(called.get() + 1)));
+        let document = app.session.document_id();
+        let result = app.run("file.rename", serde_json::json!({})).unwrap();
+        assert_eq!(result["pending"], "workspaceRename");
+        assert_eq!(calls.get(), 1);
+        assert_eq!(app.session.document_id(), document);
+        assert!(app.session.path.is_none());
+        assert!(app.dialog.is_none());
+        app.services.rename_document = None;
+        app.run("file.rename", serde_json::json!({})).unwrap();
+        assert!(app.dialog.is_some());
+    }
+
     use super::*;
 
     fn ctx() -> egui::Context {
