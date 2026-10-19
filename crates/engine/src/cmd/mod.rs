@@ -39,6 +39,8 @@ pub mod smart_art;
 pub mod speech;
 pub mod table;
 pub mod table_draw;
+pub mod table_formula;
+pub mod table_mouse;
 pub mod table_resize;
 pub mod table_style;
 pub mod templates;
@@ -76,6 +78,7 @@ pub fn registry() -> Registry {
     v.extend(table_style::specs());
     v.extend(table_draw::specs());
     v.extend(table_resize::specs());
+    v.extend(table_mouse::specs());
     v.extend(review::specs());
     v.extend(file::specs());
     v.extend(options::specs());
@@ -130,6 +133,19 @@ pub fn sel_result(s: &Session) -> CmdResult {
     Ok(json!({"anchor": pos_json(&s.sel.anchor), "focus": pos_json(&s.sel.focus)}))
 }
 
+/// The paragraphs the selection covers: those between its ends (not the next one when it ends at
+/// that one's start, #418) or, for whole table cells that aren't one run of the text (part of a
+/// column), just the cells' own.
+pub fn selected_paths(s: &Session) -> Vec<wordcraft_doc::Path> {
+    if s.cell_range().is_some()
+        && let Some(segs) = s.column_segments()
+    {
+        return segs.iter().map(|(a, _)| a.path.clone()).collect();
+    }
+    let (a, b) = s.sel.ordered();
+    s.doc.para_paths_in(&a, &b)
+}
+
 /// Delete the selection (respecting track changes); returns the collapsed position.
 pub fn delete_selection(s: &mut Session) -> Result<Pos, CmdError> {
     let (a, b) = s.sel.ordered();
@@ -182,6 +198,18 @@ pub fn join_next_para(s: &mut Session, story: StoryRef, path: &wordcraft_doc::Pa
     let p = s.doc.para_mut(story, path)?;
     (p.mark.ins, p.mark.del) = revs;
     p.touch();
+    Ok(true)
+}
+
+/// Remove the paragraph at `path` when it is empty, carries no section break and another
+/// paragraph follows in the same container: the next paragraph keeps its own properties. Returns
+/// `false`, changing nothing, otherwise.
+pub fn remove_empty_para(s: &mut Session, story: StoryRef, path: &wordcraft_doc::Path) -> Result<bool, CmdError> {
+    let empty = s.doc.para(story, path).is_some_and(|p| p.is_empty() && p.section.is_none());
+    if !empty || !has_next_para(s, story, path) {
+        return Ok(false);
+    }
+    s.doc.remove_block(story, path)?;
     Ok(true)
 }
 
@@ -252,13 +280,24 @@ pub fn paste_text(s: &mut Session, text: &str) -> Result<(), CmdError> {
 
 fn insert_text(s: &mut Session, text: &str, enter: bool) -> Result<(), CmdError> {
     let mut props = s.typing_props();
+    if s.sel.is_collapsed() {
+        s.sel = crate::Selection::caret(s.doc.past_field_ends(&s.sel.focus));
+    }
     // Content controls: a placeholder is replaced, locked ones refuse.
     if let Some(p) = controls::prepare_edit(s)? {
         props = p;
     }
+    // Pasted text is text: pending properties left by AutoCorrect don't give it a symbol's font (#2036).
+    if !enter {
+        props = props.without_symbol();
+    }
     delete_selection(s)?;
     // Typed text is new: never deleted, and not a formatting change of the text around it.
     props.fmt_change = None;
+    // Its direction comes from its own letters, as on screen, not from the run it's typed into:
+    // Latin typed into reopened Hebrew must not be saved as right-to-left (#1543). The DOCX
+    // writer marks the right-to-left pieces itself.
+    props.rtl = None;
     if s.doc.settings.track_changes {
         props.ins = Some(new_revision(s, RevisionKind::Insert));
         props.del = None;
@@ -330,9 +369,14 @@ pub fn split_para(s: &mut Session, at: &Pos) -> Result<Pos, CmdError> {
 
 /// [`split_para`]; without `enter` an empty list item is split like any other paragraph.
 fn split_para_as(s: &mut Session, at: &Pos, enter: bool) -> Result<Pos, CmdError> {
-    // `num: 0` means "explicitly not in a list", so it isn't a list item.
+    // `num: 0` means "explicitly not in a list", so it isn't a list item. The list may come from
+    // the paragraph's style (List Number 2 in a Word file) rather than the paragraph itself.
     let (at_end, style, empty_list) = match s.doc.para_at(at) {
-        Some(p) => (at.off >= p.len(), p.props.style.clone(), p.props.numbering.filter(|n| enter && n.num != 0 && p.is_empty())),
+        Some(p) => (
+            at.off >= p.len(),
+            p.props.style.clone(),
+            p.props.numbering.or_else(|| s.doc.styles.resolve_para(&p.props).numbering).filter(|n| enter && n.num != 0 && p.is_empty()),
+        ),
         None => return Err(CmdError::Failed("no paragraph at caret".into())),
     };
     if let Some(n) = empty_list {

@@ -44,10 +44,11 @@ pub fn dictionary() -> Arc<AffixDict> {
 
 fn load_installed() -> AffixDict {
     let Some((aff, dic)) = crate::hunspell::find(NAMES) else {
+        crate::hunspell::clear_load_error(NAMES[0]);
         log::info!("Polish spelling: no Hunspell pl_PL dictionary installed");
         return AffixDict::default();
     };
-    crate::hunspell::load(&aff, &dic).unwrap_or_else(|e| {
+    crate::hunspell::note_load(NAMES[0], &dic, crate::hunspell::load(&aff, &dic)).unwrap_or_else(|e| {
         log::warn!("Polish spelling: {e}");
         AffixDict::default()
     })
@@ -65,6 +66,13 @@ pub fn install_dictionary(aff: &str, dic: &str) -> Result<(), String> {
 /// [`crate::hunspell::set_dictionary_dir`] or a dictionary was installed).
 pub fn reload_dictionary() {
     *DICT.write().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// The `.dic` file of the installed Polish dictionary, searching the dictionaries folder and
+/// the system locations now (File › Options › Proofing shows it, #1063); `None` when there is
+/// none. A dictionary given with [`install_dictionary`] has no file and isn't reported.
+pub fn installed_path() -> Option<std::path::PathBuf> {
+    crate::hunspell::find(NAMES).map(|(_, dic)| dic)
 }
 
 /// Is a Polish dictionary available (spelling is checked)?

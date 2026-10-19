@@ -6,8 +6,14 @@
 //!
 //! Differences from the desktop app: no TCP control channel; Open and Insert › Pictures use the
 //! browser file picker (bytes arrive through `Services::inbox`); Save and Export download.
+//! Preferences (theme, interface size, editing options…) are kept in `localStorage` (`prefs`).
 //! URL flags: `?webgl` forces WebGL2; `?sample` opens the sample document.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+
+#[cfg(any(target_arch = "wasm32", test))]
+mod prefs;
+#[cfg(any(target_arch = "wasm32", test))]
+mod save_fallback;
 
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -22,5 +28,5 @@ fn main() {
     eprintln!("wordcraft-web only runs in the browser: build it with `trunk build --release` in apps/wordcraft-web");
 }
 
-#[cfg(all(target_arch = "wasm32", feature = "icp-cloud"))]
+#[cfg(all(any(target_arch = "wasm32", test), feature = "icp-cloud"))]
 mod cloud;
