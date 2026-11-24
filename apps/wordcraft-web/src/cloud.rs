@@ -1,7 +1,7 @@
 //! Browser host adapter: the editor retains ownership of its native document format.
 use sovereign_cloud_ui::{DocumentState, Editor, Snapshot};
 
-pub struct Adapter<'a>(pub &'a mut wordcraft_ui_egui::WordApp);
+pub struct Adapter<'a>(pub &'a mut wordcraft_ui_egui::WordApp, pub &'a egui::Context);
 impl Editor for Adapter<'_> {
     fn create_document(&mut self) -> Result<(), String> {
         if self.document().is_some() {
@@ -9,7 +9,7 @@ impl Editor for Adapter<'_> {
         }
         self.0.run("file.new", serde_json::json!({}))?;
         self.0.ui.backstage = false;
-        self.0.canvas.want_focus = true;
+        self.0.canvas.focus_page(self.1);
         Ok(())
     }
     fn set_user_profile(&mut self, profile: Option<sovereign_cloud_ui::UserProfile<'_>>) {
@@ -56,7 +56,7 @@ impl Editor for Adapter<'_> {
         self.0.session.set_document(doc);
         self.0.session.path = None;
         self.0.ui.backstage = false;
-        self.0.canvas.want_focus = true;
+        self.0.canvas.focus_page(self.1);
         self.document().ok_or_else(|| "Could not open the document".into())
     }
     fn replaces_unsaved(&self) -> bool {
@@ -74,9 +74,10 @@ mod tests {
 
     #[test]
     fn start_screen_is_not_a_document_and_cloud_open_activates_one() {
+        let ctx = egui::Context::default();
         let mut app = WordApp::new(Session::new(Document::new()), Services::default());
         assert!(app.start_screen());
-        let mut adapter = Adapter(&mut app);
+        let mut adapter = Adapter(&mut app, &ctx);
         assert!(adapter.document().is_none());
         assert!(adapter.capture().is_err());
         assert!(!adapter.replaces_unsaved());
@@ -106,15 +107,16 @@ mod identity_tests {
     fn existing_comments_and_replies_use_subnet_names_and_roundtrip() {
         use serde_json::json;
         use sovereign_cloud_ui::UserProfile;
+        let ctx = egui::Context::default();
         let mut app = wordcraft_ui_egui::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
         app.session.set_document(wordcraft_doc::Document::from_text("Shared document"));
-        Adapter(&mut app).set_user_profile(Some(UserProfile { id: "account-a", display_name: "Alice Subnet" }));
+        Adapter(&mut app, &ctx).set_user_profile(Some(UserProfile { id: "account-a", display_name: "Alice Subnet" }));
         let root = app.session.run("review.newComment", &json!({"text":"Please review"})).unwrap()["id"].as_u64().unwrap() as u32;
-        Adapter(&mut app).set_user_profile(Some(UserProfile { id: "account-b", display_name: "Bob Subnet" }));
+        Adapter(&mut app, &ctx).set_user_profile(Some(UserProfile { id: "account-b", display_name: "Bob Subnet" }));
         let reply = app.session.run("review.reply", &json!({"id":root,"text":"Reviewed"})).unwrap()["id"].as_u64().unwrap() as u32;
-        let snapshot = Adapter(&mut app).capture().unwrap();
+        let snapshot = Adapter(&mut app, &ctx).capture().unwrap();
         let bytes = (snapshot.encode)().unwrap();
-        Adapter(&mut app).open("Shared.wcraft.json", &bytes).unwrap();
+        Adapter(&mut app, &ctx).open("Shared.wcraft.json", &bytes).unwrap();
         assert_eq!(app.session.doc.comments[&root].author, "Alice Subnet");
         assert_eq!(app.session.doc.comments[&reply].author, "Bob Subnet");
         assert_eq!(app.session.doc.comments[&reply].initials, "BS");
@@ -123,20 +125,21 @@ mod identity_tests {
 
     #[test]
     fn account_profile_follows_host_and_cannot_restore_identity() {
+        let ctx = egui::Context::default();
         let mut app = wordcraft_ui_egui::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
         app.session.author = "Same display name".into();
         for id in [None, Some("account-a"), Some("account-a"), Some("account-b"), None] {
-            Adapter(&mut app).set_user_profile(id.map(|id| sovereign_cloud_ui::UserProfile { id, display_name: "Subnet name" }));
+            Adapter(&mut app, &ctx).set_user_profile(id.map(|id| sovereign_cloud_ui::UserProfile { id, display_name: "Subnet name" }));
             assert_eq!(app.session.user_id.as_deref(), id);
             if id.is_some() {
                 assert_eq!(app.session.author, "Subnet name");
             }
         }
-        Adapter(&mut app).set_user_profile(Some(sovereign_cloud_ui::UserProfile { id: "account-a", display_name: "Subnet name" }));
+        Adapter(&mut app, &ctx).set_user_profile(Some(sovereign_cloud_ui::UserProfile { id: "account-a", display_name: "Subnet name" }));
         let stored = serde_json::to_string(&app.prefs()).unwrap();
         assert!(!stored.contains("account-a"));
         let mut fresh = wordcraft_ui_egui::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
-        crate::prefs::restore(&mut fresh, Some(&stored));
+        fresh.apply_prefs(serde_json::from_str(&stored).unwrap());
         assert!(fresh.session.user_id.is_none());
         assert_eq!(fresh.session.author, "Subnet name");
         app.session.set_document(wordcraft_doc::Document::new());
@@ -149,8 +152,9 @@ mod creation_tests {
     use super::*;
     #[test]
     fn workspace_creation_opens_one_native_document_and_preserves_it_on_repeat() {
+        let ctx = egui::Context::default();
         let mut app = wordcraft_ui_egui::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
-        let mut adapter = Adapter(&mut app);
+        let mut adapter = Adapter(&mut app, &ctx);
         adapter.create_document().unwrap();
         let first = adapter.document().unwrap();
         adapter.create_document().unwrap();
